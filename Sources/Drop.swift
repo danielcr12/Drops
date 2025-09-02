@@ -40,6 +40,10 @@ public struct Drop: ExpressibleByStringLiteral {
   ///   - position: Position. Defaults to `Drop.Position.top`.
   ///   - duration: Duration. Defaults to `Drop.Duration.recommended`.
   ///   - accessibility: Accessibility options. Defaults to `nil` which will use "title, subtitle" as its message.
+  ///   - accentColor: Optional accent color to tint the icon and the action button background.
+  ///   If `nil`, system defaults are used.
+  ///   - glassTintColor: Optional tint color to overlay the glass effect (iOS 26+).
+  ///   If `nil`, no extra tint overlay is applied.
   public init(
     title: String,
     titleNumberOfLines: Int = 1,
@@ -49,7 +53,9 @@ public struct Drop: ExpressibleByStringLiteral {
     action: Action? = nil,
     position: Position = .top,
     duration: Duration = .recommended,
-    accessibility: Accessibility? = nil
+    accessibility: Accessibility? = nil,
+    accentColor: UIColor? = nil,
+    glassTintColor: UIColor? = nil
   ) {
     self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     self.titleNumberOfLines = titleNumberOfLines
@@ -63,6 +69,8 @@ public struct Drop: ExpressibleByStringLiteral {
     self.duration = duration
     self.accessibility = accessibility
     ?? .init(message: [title, subtitle].compactMap { $0 }.joined(separator: ", "))
+    self.accentColor = accentColor
+    self.glassTintColor = glassTintColor
   }
 
   /// Create a new accessibility object.
@@ -74,6 +82,8 @@ public struct Drop: ExpressibleByStringLiteral {
     position = .top
     duration = .recommended
     accessibility = .init(message: title)
+    accentColor = nil
+    glassTintColor = nil
   }
 
   /// Title.
@@ -102,6 +112,12 @@ public struct Drop: ExpressibleByStringLiteral {
 
   /// Accessibility.
   public var accessibility: Accessibility
+
+  /// Optional accent color used to tint the icon and the action button background.
+  public var accentColor: UIColor?
+
+  /// Optional tint color overlay for the glass effect (iOS 26+ only).
+  public var glassTintColor: UIColor?
 }
 
 public extension Drop {
