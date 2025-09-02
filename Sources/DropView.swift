@@ -29,7 +29,35 @@ internal final class DropView: UIView {
     self.drop = drop
     super.init(frame: .zero)
 
-    backgroundColor = .secondarySystemBackground
+    if #available(iOS 26.0, *) {
+      // iOS 26+: Glass background, no extra shadows/rasterization from us.
+      isOpaque = false
+      backgroundColor = .clear
+      layer.allowsGroupOpacity = false
+
+      insertSubview(glassBackgroundView, at: 0)
+      NSLayoutConstraint.activate([
+        glassBackgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
+        glassBackgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
+        glassBackgroundView.topAnchor.constraint(equalTo: topAnchor),
+        glassBackgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
+      ])
+
+      // Optional glass tint overlay if provided.
+      if let tint = drop.glassTintColor {
+        glassBackgroundView.contentView.addSubview(glassTintOverlay)
+        glassTintOverlay.backgroundColor = tint.withAlphaComponent(Self.glassTintAlpha)
+        NSLayoutConstraint.activate([
+          glassTintOverlay.leadingAnchor.constraint(equalTo: glassBackgroundView.contentView.leadingAnchor),
+          glassTintOverlay.trailingAnchor.constraint(equalTo: glassBackgroundView.contentView.trailingAnchor),
+          glassTintOverlay.topAnchor.constraint(equalTo: glassBackgroundView.contentView.topAnchor),
+          glassTintOverlay.bottomAnchor.constraint(equalTo: glassBackgroundView.contentView.bottomAnchor)
+        ])
+      }
+    } else {
+      // Older iOS: Solid background.
+      backgroundColor = .secondarySystemBackground
+    }
 
     addSubview(stackView)
 
@@ -43,11 +71,47 @@ internal final class DropView: UIView {
   }
 
   override var frame: CGRect {
-    didSet { layer.cornerRadius = frame.cornerRadius }
+    didSet {
+      if #available(iOS 26.0, *) {
+        // No main-layer shaping on iOS 26+; glass view gets shaped in layoutSubviews.
+      } else {
+        layer.cornerRadius = frame.cornerRadius
+      }
+    }
   }
 
   override var bounds: CGRect {
-    didSet { layer.cornerRadius = frame.cornerRadius }
+    didSet {
+      if #available(iOS 26.0, *) {
+        // No main-layer shaping on iOS 26+; glass view gets shaped in layoutSubviews.
+      } else {
+        layer.cornerRadius = frame.cornerRadius
+      }
+    }
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+
+    if #available(iOS 26.0, *) {
+      // Keep capsule shape by clipping the effect view (and its tint overlay) to a pill.
+      let radius = bounds.height / 2
+      glassBackgroundView.layer.masksToBounds = true
+      glassBackgroundView.layer.cornerCurve = .continuous
+      glassBackgroundView.layer.cornerRadius = radius
+
+      if glassTintOverlay.superview != nil {
+        glassTintOverlay.layer.masksToBounds = true
+        glassTintOverlay.layer.cornerCurve = .continuous
+        glassTintOverlay.layer.cornerRadius = radius
+      }
+
+      // No custom shadow path on iOS 26+.
+      layer.shadowPath = nil
+    } else {
+      let radius = bounds.height / 2
+      layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: radius).cgPath
+    }
   }
 
   let drop: Drop
@@ -101,7 +165,12 @@ internal final class DropView: UIView {
   }
 
   func configureViews(for drop: Drop) {
-    clipsToBounds = true
+    // On iOS 26+, let the system glass handle its own capsule; don't clip the container.
+    if #available(iOS 26.0, *) {
+      clipsToBounds = false
+    } else {
+      clipsToBounds = true
+    }
 
     titleLabel.text = drop.title
     titleLabel.numberOfLines = drop.titleNumberOfLines
@@ -110,32 +179,68 @@ internal final class DropView: UIView {
     subtitleLabel.numberOfLines = drop.subtitleNumberOfLines
     subtitleLabel.isHidden = drop.subtitle == nil
 
-    imageView.image = drop.icon
+    // Icon tinting: prefer accentColor if provided; otherwise keep existing behavior.
+    if let icon = drop.icon {
+      if let accent = drop.accentColor {
+        imageView.image = icon.withRenderingMode(.alwaysTemplate)
+        imageView.tintColor = accent
+      } else {
+        imageView.image = icon
+        imageView.tintColor = UIAccessibility.isDarkerSystemColorsEnabled ? .label : .secondaryLabel
+      }
+    } else {
+      imageView.image = nil
+    }
     imageView.isHidden = drop.icon == nil
 
+    // Action button tinting: background uses accentColor if provided.
     button.setImage(drop.action?.icon, for: .normal)
     button.isHidden = drop.action?.icon == nil
+    if let accent = drop.accentColor {
+      button.backgroundColor = accent
+      button.tintColor = .white // ensure contrast for symbol
+    } else {
+      button.backgroundColor = .link
+      button.tintColor = .white
+    }
 
     if let action = drop.action, action.icon == nil {
       let tap = UITapGestureRecognizer(target: self, action: #selector(didTapButton))
       addGestureRecognizer(tap)
     }
 
-    layer.shadowColor = UIColor.black.cgColor
-    layer.shadowOffset = .zero
-    layer.shadowRadius = 25
-    layer.shadowOpacity = 0.15
-    layer.shouldRasterize = true
+    if #available(iOS 26.0, *) {
+      // Glass: disable our own shadows and rasterization to avoid artifacts and double effects.
+      layer.shadowOpacity = 0
+      layer.shadowRadius = 0
+      layer.shadowOffset = .zero
+      layer.shouldRasterize = false
+      layer.masksToBounds = false
+
+      // If Reduce Transparency is enabled, optionally fall back to solid background.
+      if UIAccessibility.isReduceTransparencyEnabled {
+        backgroundColor = .secondarySystemBackground
+      }
+    } else {
+      // Solid background: keep the existing soft shadow with a defined path (set in layoutSubviews).
+      layer.shadowColor = UIColor.black.cgColor
+      layer.shadowOffset = .zero
+      layer.shadowRadius = 25
+      layer.shadowOpacity = 0.15
+      layer.shouldRasterize = true
       #if os(iOS)
-    layer.rasterizationScale = UIScreen.main.scale
+      layer.rasterizationScale = UIScreen.main.scale
       #endif
-    layer.masksToBounds = false
+      layer.masksToBounds = false
+    }
   }
 
   @objc
   func didTapButton() {
     drop.action?.handler()
   }
+
+  // MARK: - Subviews
 
   lazy var titleLabel: UILabel = {
     let label = UILabel()
@@ -203,6 +308,35 @@ internal final class DropView: UIView {
     }
     return view
   }()
+
+  // Background glass effect container (iOS 26+)
+  private lazy var glassBackgroundView: UIVisualEffectView = {
+    let effect: UIVisualEffect
+    if #available(iOS 26.0, *) {
+      effect = UIGlassEffect(style: .regular)
+    } else {
+      effect = UIBlurEffect(style: .systemThinMaterial)
+    }
+    let v = UIVisualEffectView(effect: effect)
+    v.isOpaque = false
+    v.backgroundColor = .clear
+    v.translatesAutoresizingMaskIntoConstraints = false
+    v.isUserInteractionEnabled = false
+    return v
+  }()
+
+  // Optional tint overlay for glass (iOS 26+ when glassTintColor is provided)
+  private lazy var glassTintOverlay: UIView = {
+    let v = UIView()
+    v.translatesAutoresizingMaskIntoConstraints = false
+    v.isUserInteractionEnabled = false
+    v.backgroundColor = .clear
+    return v
+  }()
+
+  // MARK: - Constants
+
+  private static let glassTintAlpha: CGFloat = 0.12
 }
 
 final class RoundButton: UIButton {
