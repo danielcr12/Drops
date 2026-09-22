@@ -68,6 +68,20 @@ Drops.show("Title")
 Drops.show(drop)
 ```
 
+To update the subtitle while a drop is visible, use `updateCurrent(subtitle:)`:
+
+```swift
+let drops = Drops()
+drops.show(Drop(title: "Updating Routines", duration: 10.0))
+
+for completed in 1...25 {
+    // Perform the next update...
+    drops.updateCurrent(subtitle: "\(completed)/25")
+}
+```
+
+Pass `nil` or an empty string to hide the current subtitle.
+
 ###### SwiftUI
 ```swift
 import SwiftUI

@@ -173,6 +173,23 @@ final class DropViewTests: XCTestCase {
     XCTAssertEqual(view2.titleLabel.numberOfLines, 3)
     XCTAssertEqual(view2.subtitleLabel.numberOfLines, 0)
   }
+
+  func testUpdateSubtitle() {
+    let view = DropView(drop: Drop(title: "Updating Routines"))
+
+    view.update(subtitle: "10/25")
+
+    XCTAssertEqual(view.drop.subtitle, "10/25")
+    XCTAssertEqual(view.subtitleLabel.text, "10/25")
+    XCTAssertFalse(view.subtitleLabel.isHidden)
+    XCTAssertEqual(view.createLayoutConstraints(for: view.drop)[5].constant, 7.5)
+
+    view.update(subtitle: "  ")
+
+    XCTAssertNil(view.drop.subtitle)
+    XCTAssertTrue(view.subtitleLabel.isHidden)
+    XCTAssertEqual(view.createLayoutConstraints(for: view.drop)[5].constant, 15)
+  }
 }
 
 extension Drop: Equatable {

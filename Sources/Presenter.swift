@@ -33,7 +33,7 @@ internal final class Presenter: NSObject {
     context = AnimationContext(view: view, container: maskingView)
   }
 
-  let drop: Drop
+  var drop: Drop
   let animator: Animator
   var isHiding = false
 
@@ -61,6 +61,12 @@ internal final class Presenter: NSObject {
     animator.hide(context: context) { _ in
       action()
     }
+  }
+
+  func update(subtitle: String?) {
+    let trimmedSubtitle = subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+    drop.subtitle = trimmedSubtitle?.isEmpty == true ? nil : trimmedSubtitle
+    (view as? DropView)?.update(subtitle: drop.subtitle)
   }
 
   let maskingView = PassthroughView()

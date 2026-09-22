@@ -61,8 +61,8 @@ internal final class DropView: UIView {
 
     addSubview(stackView)
 
-    let constraints = createLayoutConstraints(for: drop)
-    NSLayoutConstraint.activate(constraints)
+    layoutConstraints = createLayoutConstraints(for: drop)
+    NSLayoutConstraint.activate(layoutConstraints)
     configureViews(for: drop)
   }
 
@@ -114,7 +114,118 @@ internal final class DropView: UIView {
     }
   }
 
-  let drop: Drop
+  var drop: Drop
+
+  private var layoutConstraints: [NSLayoutConstraint] = []
+  private var subtitleDisplayLink: CADisplayLink?
+  private var subtitleAnimationStart: CFTimeInterval = 0
+  private var subtitleAnimationFrom = 0
+  private var subtitleAnimationTo = 0
+  private var subtitleAnimationPrefix = ""
+  private var subtitleAnimationSuffix = ""
+  private let subtitleAnimationDuration: CFTimeInterval = 0.35
+
+  func update(subtitle: String?) {
+    let trimmedSubtitle = subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedSubtitle: String? = trimmedSubtitle?.isEmpty == true ? nil : trimmedSubtitle
+    let subtitlePresenceChanged = (drop.subtitle == nil) != (normalizedSubtitle == nil)
+    let currentSubtitle = subtitleLabel.text
+
+    drop.subtitle = normalizedSubtitle
+    subtitleLabel.isHidden = normalizedSubtitle == nil
+
+    if !subtitlePresenceChanged,
+       let currentSubtitle,
+       let normalizedSubtitle,
+       animateNumericSubtitle(from: currentSubtitle, to: normalizedSubtitle) {
+      return
+    }
+
+    stopSubtitleAnimation()
+    subtitleLabel.text = normalizedSubtitle
+
+    guard subtitlePresenceChanged else {
+      setNeedsLayout()
+      return
+    }
+
+    NSLayoutConstraint.deactivate(layoutConstraints)
+    layoutConstraints = createLayoutConstraints(for: drop)
+    NSLayoutConstraint.activate(layoutConstraints)
+    setNeedsLayout()
+    layoutIfNeeded()
+  }
+
+  @discardableResult
+  private func animateNumericSubtitle(from: String, to: String) -> Bool {
+    guard let fromPattern = NumericSubtitlePattern(from),
+          let toPattern = NumericSubtitlePattern(to),
+          fromPattern.prefix == toPattern.prefix,
+          fromPattern.suffix == toPattern.suffix,
+          fromPattern.value != toPattern.value else {
+      return false
+    }
+
+    stopSubtitleAnimation()
+    subtitleAnimationStart = CACurrentMediaTime()
+    subtitleAnimationFrom = fromPattern.value
+    subtitleAnimationTo = toPattern.value
+    subtitleAnimationPrefix = toPattern.prefix
+    subtitleAnimationSuffix = toPattern.suffix
+
+    let displayLink = CADisplayLink(target: self, selector: #selector(stepSubtitleAnimation(_:)))
+    subtitleDisplayLink = displayLink
+    displayLink.add(to: .main, forMode: .common)
+    return true
+  }
+
+  @objc
+  private func stepSubtitleAnimation(_ displayLink: CADisplayLink) {
+    let elapsed = displayLink.timestamp - subtitleAnimationStart
+    let progress = min(max(elapsed / subtitleAnimationDuration, 0), 1)
+    let easedProgress = 1 - pow(1 - progress, 3)
+    let value = Int(round(Double(subtitleAnimationFrom) +
+      Double(subtitleAnimationTo - subtitleAnimationFrom) * easedProgress))
+
+    subtitleLabel.text = "\(subtitleAnimationPrefix)\(value)\(subtitleAnimationSuffix)"
+    setNeedsLayout()
+
+    if progress >= 1 {
+      subtitleLabel.text = drop.subtitle
+      stopSubtitleAnimation()
+    }
+  }
+
+  private func stopSubtitleAnimation() {
+    subtitleDisplayLink?.invalidate()
+    subtitleDisplayLink = nil
+  }
+
+  deinit {
+    stopSubtitleAnimation()
+  }
+
+  private struct NumericSubtitlePattern {
+    let prefix: String
+    let value: Int
+    let suffix: String
+
+    init?(_ string: String) {
+      guard let match = string.range(of: "^[^0-9]*[0-9]+.*$", options: .regularExpression) else {
+        return nil
+      }
+
+      let matched = String(string[match])
+      guard let numberRange = matched.range(of: "[0-9]+", options: .regularExpression),
+            let value = Int(matched[numberRange]) else {
+        return nil
+      }
+
+      prefix = String(matched[..<numberRange.lowerBound])
+      suffix = String(matched[numberRange.upperBound...])
+      self.value = value
+    }
+  }
 
   func createLayoutConstraints(for drop: Drop) -> [NSLayoutConstraint] {
     var constraints: [NSLayoutConstraint] = []
@@ -281,7 +392,13 @@ internal final class DropView: UIView {
     button.backgroundColor = .link
     button.tintColor = .white
     button.imageView?.contentMode = .scaleAspectFit
-    button.contentEdgeInsets = .init(top: 7.5, left: 7.5, bottom: 7.5, right: 7.5)
+    if #available(iOS 15.0, *) {
+      var configuration = UIButton.Configuration.plain()
+      configuration.contentInsets = .init(top: 7.5, leading: 7.5, bottom: 7.5, trailing: 7.5)
+      button.configuration = configuration
+    } else {
+      button.contentEdgeInsets = .init(top: 7.5, left: 7.5, bottom: 7.5, right: 7.5)
+    }
     return button
   }()
 

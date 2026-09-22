@@ -42,6 +42,12 @@ public final class Drops {
     shared.show(drop)
   }
 
+  /// Update the subtitle of the currently shown drop.
+  /// - Parameter subtitle: New subtitle. Pass `nil` or an empty string to hide it.
+  public static func updateCurrent(subtitle: String?) {
+    shared.updateCurrent(subtitle: subtitle)
+  }
+
   /// Hide currently shown drop.
   public static func hideCurrent() {
     shared.hideCurrent()
@@ -93,12 +99,21 @@ public final class Drops {
     }
   }
 
+  /// Update the subtitle of the currently shown drop.
+  /// - Parameter subtitle: New subtitle. Pass `nil` or an empty string to hide it.
+  public func updateCurrent(subtitle: String?) {
+    DispatchQueue.main.async { [weak self] in
+      guard let current = self?.current else { return }
+      current.update(subtitle: subtitle)
+    }
+  }
+
   /// Hide currently shown drop.
   public func hideCurrent() {
     guard let current = current, !current.isHiding else { return }
     willDismissDrop?(current.drop)
     DispatchQueue.main.async {
-      current.hide(animated: true) { [weak self] completed in
+        current.hide(animated: true) { [weak self = self] completed in
         guard completed, let self = self else { return }
         self.dispatchQueue.sync {
           self.didDismissDrop?(current.drop)
